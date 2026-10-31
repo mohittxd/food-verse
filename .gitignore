@@ -22,3 +22,28 @@ backend/models/*.pt
 Thumbs.db
 .vscode/
 .idea/
+# Python
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+.pytest_cache/
+
+# Environment variables
+.env
+.env.*
+
+# Node
+node_modules/
+dist/
+.vite/
+
+# IDE
+.vscode/
+
+# System
+.DS_Store
+Thumbs.db
+
+# Logs
+*.log

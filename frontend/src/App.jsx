@@ -8,7 +8,6 @@ import {
   ShieldCheck,
   Server,
   Zap,
-  CheckCircle2,
   AlertCircle,
   Clock,
   Award,
@@ -31,71 +30,18 @@ const PRESET_DISHES = [
     name: 'Artisanal Avocado & Poached Egg Toast',
     subtitle: 'Microgreens & Sesame Sourdough',
     image: '/images/avocado_toast.jpg',
-    cuisine: 'Modern Californian',
-    calories: 385,
-    protein: 14.5,
-    carbs: 31.0,
-    fat: 22.8,
-    fiber: 8.5,
-    confidence: 98.6,
-    freshnessScore: 96,
-    ingredients: [
-      'Hass Avocado (crushed)',
-      'Organic Poached Egg',
-      'Artisan Sourdough Slice',
-      'Microgreens & Watercress',
-      'Chili Flakes & Sesame',
-      'Extra Virgin Olive Oil',
-      'Maldon Sea Salt'
-    ],
-    chefQuote: 'A rich source of monounsaturated fatty acids and bioavailable lutein from pastured egg yolk.',
   },
   {
     id: 'salmon_bowl',
     name: 'Pacific Salmon Poke & Quinoa Bowl',
     subtitle: 'Omega-3 Superfood Protein Bowl',
     image: '/images/salmon_bowl.jpg',
-    cuisine: 'Hawaiian / Fusion',
-    calories: 540,
-    protein: 36.2,
-    carbs: 48.0,
-    fat: 21.5,
-    fiber: 7.8,
-    confidence: 99.1,
-    freshnessScore: 98,
-    ingredients: [
-      'Fresh Sashimi-Grade Salmon',
-      'Steamed Edamame Pods',
-      'Sliced Hass Avocado',
-      'Shredded Purple Cabbage',
-      'Diced Sweet Mango',
-      'Quinoa & Jasmine Rice',
-      'Toasted Black Sesame'
-    ],
-    chefQuote: 'High in clean Omega-3 EPA/DHA fatty acids and natural anthocyanins from purple cabbage.',
   },
   {
     id: 'fresh_produce',
     name: 'Farm-Fresh Mediterranean Harvest',
     subtitle: 'Organic Vine Tomatoes, Basil & Broccoli',
     image: '/images/fresh_produce.jpg',
-    cuisine: 'Raw Organic Wholefoods',
-    calories: 145,
-    protein: 5.2,
-    carbs: 24.0,
-    fat: 3.8,
-    fiber: 8.0,
-    confidence: 97.8,
-    freshnessScore: 95,
-    ingredients: [
-      'Vine-Ripened Campari Tomatoes',
-      'Crisp Broccoli Florets',
-      'Sweet Bell Peppers',
-      'Genovese Basil Leaves',
-      'Cold-Pressed Olive Oil',
-      'Cherry Tomatoes'
-    ],
-    chefQuote: 'Packed with Lycopene, Vitamin C (over 200% DV), and cellular anti-inflammatory flavonoids.',
   },
 ];
 
@@ -119,44 +65,66 @@ const SUPPORTED_PRODUCE = [
 
 const API_BASE = 'http://127.0.0.1:8000';
 
+const fetchBackendStatus = async () => {
+  const start = performance.now();
+  const response = await fetch(`${API_BASE}/api/health`);
+  if (!response.ok) {
+    return { online: false, ping: null, info: null };
+  }
+  const info = await response.json();
+  return {
+    online: true,
+    ping: Math.round(performance.now() - start),
+    info,
+  };
+};
+
+const getServiceErrorMessage = (error, service) => {
+  if (error instanceof TypeError && error.message === 'Failed to fetch') {
+    return `Unable to connect to the ${service} service. Check that the backend is running at ${API_BASE}.`;
+  }
+  return error instanceof Error ? error.message : `Unable to reach the ${service} service.`;
+};
+
 export default function App() {
-  const [activeTab, setActiveTab] = useState('vision');
+  const [activeTab, setActiveTab] = useState('home');
   const [selectedDishId, setSelectedDishId] = useState('avocado_toast');
   const [backendStatus, setBackendStatus] = useState({ online: false, ping: null, info: null });
-  const [isScanning, setIsScanning] = useState(false);
 
-  // Nutrition portion slider state
   const [portionGrams, setPortionGrams] = useState(250);
+  const [nutritionResult, setNutritionResult] = useState(null);
+  const [nutritionError, setNutritionError] = useState('');
+  const [loadingNutrition, setLoadingNutrition] = useState(false);
 
-  // Freshness custom tester state
   const [freshnessItem, setFreshnessItem] = useState('Ripe Vine Tomatoes');
   const [freshnessResult, setFreshnessResult] = useState(null);
+  const [freshnessError, setFreshnessError] = useState('');
   const [loadingFreshness, setLoadingFreshness] = useState(false);
 
-  // Chef AI state
-  const [pantryIngredients, setPantryIngredients] = useState(['Tomatoes', 'Basil', 'Garlic', 'Olive Oil', 'Pasta']);
+  const [pantryIngredients, setPantryIngredients] = useState([]);
   const [ingredientInput, setIngredientInput] = useState('');
   const [dietaryChoice, setDietaryChoice] = useState('Vegetarian');
   const [generatedRecipe, setGeneratedRecipe] = useState(null);
+  const [recipeError, setRecipeError] = useState('');
   const [generatingRecipe, setGeneratingRecipe] = useState(false);
 
-  // Hygiene audit state
-  const [surfaceScore, setSurfaceScore] = useState(94);
-  const [tempScore, setTempScore] = useState(96);
-  const [contaminationScore, setContaminationScore] = useState(92);
+  const [facilityName, setFacilityName] = useState('');
+  const [inspectionZone, setInspectionZone] = useState('');
+  const [surfaceScore, setSurfaceScore] = useState(null);
+  const [tempScore, setTempScore] = useState(null);
+  const [contaminationScore, setContaminationScore] = useState(null);
   const [auditResult, setAuditResult] = useState(null);
+  const [auditError, setAuditError] = useState('');
+  const [runningAudit, setRunningAudit] = useState(false);
 
-  // API diagnostics state
   const [diagnosticsLog, setDiagnosticsLog] = useState([]);
   const [runningDiag, setRunningDiag] = useState(false);
 
-  // Food Image Upload state
   const fileInputRef = useRef(null);
   const [uploadedFile, setUploadedFile] = useState(null);
   const [previewUrl, setPreviewUrl] = useState(null);
   const [uploadError, setUploadError] = useState('');
   const [isDragging, setIsDragging] = useState(false);
-  const [showPhase2Notice, setShowPhase2Notice] = useState(false);
   const [isAnalyzingUpload, setIsAnalyzingUpload] = useState(false);
   const [uploadPrediction, setUploadPrediction] = useState(null);
 
@@ -172,34 +140,35 @@ export default function App() {
   }, [previewUrl]);
 
   const checkHealth = async () => {
-    const start = performance.now();
     try {
-      const res = await fetch(`${API_BASE}/api/health`);
-      if (res.ok) {
-        const data = await res.json();
-        const latency = Math.round(performance.now() - start);
-        setBackendStatus({ online: true, ping: latency, info: data });
-      } else {
-        setBackendStatus({ online: false, ping: null, info: null });
-      }
+      setBackendStatus(await fetchBackendStatus());
     } catch {
-      // Backend not running yet or unreachable
       setBackendStatus({ online: false, ping: null, info: null });
     }
   };
 
-  // Check backend health on initial load
   useEffect(() => {
-    checkHealth();
+    let active = true;
+    fetchBackendStatus()
+      .then((status) => {
+        if (active) setBackendStatus(status);
+      })
+      .catch(() => {
+        if (active) setBackendStatus({ online: false, ping: null, info: null });
+      });
+
+    return () => {
+      active = false;
+    };
   }, []);
+
+  useEffect(() => {
+    window.scrollTo(0, 0);
+  }, [activeTab]);
 
 
   const handleSelectDish = (id) => {
-    setIsScanning(true);
     setSelectedDishId(id);
-    setTimeout(() => {
-      setIsScanning(false);
-    }, 450);
   };
 
   const handleAddIngredient = (e) => {
@@ -214,45 +183,62 @@ export default function App() {
     setPantryIngredients(pantryIngredients.filter((i) => i !== ing));
   };
 
-  // Trigger Freshness Analysis
   const handleAnalyzeFreshness = async () => {
+    if (!freshnessItem.trim()) {
+      setFreshnessError('Enter a food or produce name to continue.');
+      setFreshnessResult(null);
+      return;
+    }
+
     setLoadingFreshness(true);
+    setFreshnessError('');
+    setFreshnessResult(null);
     try {
       const res = await fetch(`${API_BASE}/api/freshness`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ item_name: freshnessItem, storage_type: 'refrigerated' }),
+        body: JSON.stringify({ item_name: freshnessItem.trim(), storage_type: 'refrigerated' }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setFreshnessResult(data);
-      } else {
-        // Fallback simulated response if backend is offline
-        setFreshnessResult({
-          item_name: freshnessItem,
-          freshness_index: 94,
-          grade: 'Optimal Freshness',
-          estimated_shelf_life_days: 5,
-          visual_indicators: ['Natural moisture retention', 'Uniform coloration', 'Crisp structural rigidity'],
-          storage_protocol: 'Keep stored in breathable crisper drawer with 85% relative humidity.',
-        });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || 'Freshness assessment could not be completed.');
       }
-    } catch {
-      setFreshnessResult({
-        item_name: freshnessItem,
-        freshness_index: 92,
-        grade: 'Optimal Freshness',
-        estimated_shelf_life_days: 4,
-        visual_indicators: ['Firm surface elasticity', 'Natural pigmentation', 'Clean aroma'],
-        storage_protocol: 'Store at 2°C - 4°C in sealed glass container.',
-      });
+      setFreshnessResult(await res.json());
+    } catch (error) {
+      setFreshnessError(getServiceErrorMessage(error, 'freshness'));
     } finally {
       setLoadingFreshness(false);
     }
   };
 
-  // Trigger Chef AI Recipe Generation
+  const handleAnalyzeNutrition = async () => {
+    setLoadingNutrition(true);
+    setNutritionError('');
+    setNutritionResult(null);
+    try {
+      const res = await fetch(`${API_BASE}/api/nutrition`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          food_name: selectedDishId === 'fresh_produce' ? 'fresh produce' : currentDish.name,
+          portion_grams: portionGrams,
+        }),
+      });
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || 'Nutrition information could not be loaded.');
+      }
+      setNutritionResult(await res.json());
+    } catch (error) {
+      setNutritionError(getServiceErrorMessage(error, 'nutrition'));
+    } finally {
+      setLoadingNutrition(false);
+    }
+  };
+
   const handleGenerateRecipe = async () => {
+    setRecipeError('');
+    setGeneratedRecipe(null);
     setGeneratingRecipe(true);
     try {
       const res = await fetch(`${API_BASE}/api/cooking-assistant`, {
@@ -264,77 +250,55 @@ export default function App() {
           user_prompt: 'Create a vibrant gourmet meal',
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setGeneratedRecipe(data.recipe);
-      } else {
-        fallbackRecipe();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || 'The recipe service could not create a recipe.');
       }
-    } catch {
-      fallbackRecipe();
+      const data = await res.json();
+      if (!data.recipe) {
+        throw new Error('The recipe service did not return a recipe.');
+      }
+      setGeneratedRecipe(data.recipe);
+    } catch (error) {
+      setRecipeError(getServiceErrorMessage(error, 'recipe'));
     } finally {
       setGeneratingRecipe(false);
     }
   };
 
-  const fallbackRecipe = () => {
-    setGeneratedRecipe({
-      recipe_title: 'Velvety Roasted Garlic & Tomato Sourdough Bruschetta',
-      prep_time: '10 mins',
-      cook_time: '8 mins',
-      difficulty: 'Beginner Friendly',
-      calories_est: 310,
-      steps: [
-        'Roast vine tomatoes with smashed garlic cloves and a drizzle of oil at 200°C for 8 minutes.',
-        'Grill sourdough bread over an open flame or heavy grill pan until smoky grill marks appear.',
-        'Rub hot grilled toast with a raw garlic clove for authentic rustic flavor.',
-        'Spoon warm roasted tomatoes over toast, finishing with torn basil leaves and sea salt.',
-      ],
-      pro_tip: 'Always tear basil by hand instead of cutting with a knife to prevent oxidation and browning.',
-    });
-  };
-
-  // Trigger Hygiene Audit
   const handleRunAudit = async () => {
+    const scores = [surfaceScore, tempScore, contaminationScore];
+    if (scores.some((score) => score === null || !Number.isInteger(score) || score < 0 || score > 100)) {
+      setAuditError('Enter a whole-number score from 0 to 100 in all three fields.');
+      setAuditResult(null);
+      return;
+    }
+
+    setAuditError('');
+    setAuditResult(null);
+    setRunningAudit(true);
     try {
       const res = await fetch(`${API_BASE}/api/hygiene-audit`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
-          facility_name: 'Artisan Culinary Kitchen',
-          inspection_zone: 'Cold Prep & Station',
+          ...(facilityName.trim() && { facility_name: facilityName.trim() }),
+          ...(inspectionZone.trim() && { inspection_zone: inspectionZone.trim() }),
           surface_cleanliness: surfaceScore,
           temperature_control: tempScore,
           cross_contamination_prevention: contaminationScore,
         }),
       });
-      if (res.ok) {
-        const data = await res.json();
-        setAuditResult(data);
-      } else {
-        fallbackAudit();
+      if (!res.ok) {
+        const errorData = await res.json().catch(() => null);
+        throw new Error(errorData?.detail || 'The hygiene assessment could not be completed.');
       }
-    } catch {
-      fallbackAudit();
+      setAuditResult(await res.json());
+    } catch (error) {
+      setAuditError(getServiceErrorMessage(error, 'hygiene'));
+    } finally {
+      setRunningAudit(false);
     }
-  };
-
-  const fallbackAudit = () => {
-    const avg = Math.round((surfaceScore + tempScore + contaminationScore) / 3);
-    setAuditResult({
-      facility: 'Artisan Culinary Kitchen',
-      zone: 'Cold Prep & Station',
-      overall_hygiene_score: avg,
-      certification_grade: avg >= 90 ? 'Grade A - Superior Sanitation' : 'Grade B - Satisfactory',
-      haccp_compliant: avg >= 85,
-      inspection_checklist: [
-        { item: 'Cold Storage Temperature (<= 4°C)', status: 'Passed', value: '2.4°C' },
-        { item: 'Surface Sanitization Residue Check', status: 'Passed', value: '0.02 ppm' },
-        { item: 'Color-Coded Cutting Board Protocol', status: 'Compliant', value: 'Active' },
-        { item: 'Handwashing Station Compliance', status: 'Passed', value: 'Verified' },
-      ],
-      ai_recommendation: 'Maintain weekly deep-cycle sanitize on prep slicers and log refrigerator temp twice daily.',
-    });
   };
 
   // Run full system diagnostics
@@ -414,42 +378,32 @@ export default function App() {
   const handleProcessFile = (file) => {
     if (!file) return;
 
-    // Reset status, predictions, and errors
-    setUploadError('');
-    setUploadPrediction(null);
-    setShowPhase2Notice(false);
+    const isSupportedImage =
+      /\.(jpe?g|png|webp|bmp|jfif)$/i.test(file.name) &&
+      (!file.type || file.type.startsWith('image/'));
 
-    // Validate file type (must be image/*)
-    const isImage = file.type
-      ? file.type.startsWith('image/')
-      : /\.(jpe?g|png|webp|gif|svg|bmp|avif)$/i.test(file.name);
-
-    if (!isImage) {
-      setUploadError(`Invalid file type: "${file.name}". Please upload a valid image file (PNG, JPG, WEBP, etc.).`);
+    if (!isSupportedImage) {
+      setUploadError('Choose a supported image format: JPG, PNG, WEBP, BMP, or JFIF.');
       return;
     }
 
-    // Validate file size limit (10 MB)
     if (file.size > MAX_FILE_SIZE_BYTES) {
       const sizeMb = (file.size / (1024 * 1024)).toFixed(2);
       setUploadError(`File size exceeds 10 MB limit (${sizeMb} MB). Please choose a smaller image.`);
       return;
     }
 
-    // Revoke previous preview URL if present
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
-
-    // Create object URL preview and store file
-    const objectUrl = URL.createObjectURL(file);
-    setPreviewUrl(objectUrl);
+    setUploadError('');
+    setUploadPrediction(null);
+    setPreviewUrl(URL.createObjectURL(file));
     setUploadedFile(file);
   };
 
   const handleFileInputChange = (e) => {
     if (e.target.files && e.target.files.length > 0) {
-      handleProcessFile(e.target.files[0]);
+      const file = e.target.files[0];
+      e.target.value = '';
+      handleProcessFile(file);
     }
   };
 
@@ -475,14 +429,10 @@ export default function App() {
   };
 
   const handleRemoveImage = () => {
-    if (previewUrl) {
-      URL.revokeObjectURL(previewUrl);
-    }
     setPreviewUrl(null);
     setUploadedFile(null);
     setUploadError('');
     setUploadPrediction(null);
-    setShowPhase2Notice(false);
     if (fileInputRef.current) {
       fileInputRef.current.value = '';
     }
@@ -497,7 +447,6 @@ export default function App() {
     setIsAnalyzingUpload(true);
     setUploadError('');
     setUploadPrediction(null);
-    setShowPhase2Notice(false);
 
     const formData = new FormData();
     formData.append('file', uploadedFile);
@@ -533,103 +482,164 @@ export default function App() {
     }
   };
 
-  // Ratio for portion calculation in Nutrition tab
-  const portionRatio = portionGrams / 250;
-
   return (
     <div className="app-container">
-      {/* Top Navigation Bar */}
       <header className="header">
         <div className="brand-wrapper">
           <div className="brand-icon-box">
-            <Sparkles size={24} />
+            <Apple size={21} />
           </div>
           <div>
             <div className="brand-title">Food Verse AI</div>
-            <div className="brand-subtitle">Produce Recognition & Quality Intelligence</div>
           </div>
         </div>
 
-        {/* Center Nav Tabs */}
-        <nav className="nav-tabs" aria-label="Main Navigation">
+        <nav className="nav-tabs" aria-label="Main navigation">
           <button
-            id="tab-vision-btn"
-            className={`nav-tab-btn ${activeTab === 'vision' ? 'active' : ''}`}
-            onClick={() => setActiveTab('vision')}
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'home' ? 'active' : ''}`}
+            aria-current={activeTab === 'home' ? 'page' : undefined}
+            onClick={() => setActiveTab('home')}
           >
-            <Camera size={16} /> Produce Identifier
+            Home
           </button>
           <button
-            id="tab-freshness-btn"
-            className={`nav-tab-btn ${activeTab === 'freshness' ? 'active' : ''}`}
-            onClick={() => setActiveTab('freshness')}
+            id="tab-vision-btn"
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'vision' ? 'active' : ''}`}
+            aria-current={activeTab === 'vision' ? 'page' : undefined}
+            onClick={() => setActiveTab('vision')}
           >
-            <Apple size={16} /> Freshness
+            <Camera size={15} /> Recognize
           </button>
           <button
             id="tab-nutrition-btn"
+            type="button"
             className={`nav-tab-btn ${activeTab === 'nutrition' ? 'active' : ''}`}
+            aria-current={activeTab === 'nutrition' ? 'page' : undefined}
             onClick={() => setActiveTab('nutrition')}
           >
-            <Activity size={16} /> Nutrition
+            <Activity size={15} /> Nutrition
           </button>
           <button
             id="tab-chef-btn"
+            type="button"
             className={`nav-tab-btn ${activeTab === 'chef' ? 'active' : ''}`}
+            aria-current={activeTab === 'chef' ? 'page' : undefined}
             onClick={() => setActiveTab('chef')}
           >
-            <ChefHat size={16} /> Chef AI
+            <ChefHat size={15} /> Recipes
+          </button>
+          <button
+            id="tab-freshness-btn"
+            type="button"
+            className={`nav-tab-btn ${activeTab === 'freshness' ? 'active' : ''}`}
+            aria-current={activeTab === 'freshness' ? 'page' : undefined}
+            onClick={() => setActiveTab('freshness')}
+          >
+            <Apple size={15} /> Freshness
           </button>
           <button
             id="tab-hygiene-btn"
+            type="button"
             className={`nav-tab-btn ${activeTab === 'hygiene' ? 'active' : ''}`}
+            aria-current={activeTab === 'hygiene' ? 'page' : undefined}
             onClick={() => setActiveTab('hygiene')}
           >
-            <ShieldCheck size={16} /> Hygiene Audit
+            <ShieldCheck size={15} /> Hygiene
           </button>
           <button
             id="tab-api-btn"
+            type="button"
             className={`nav-tab-btn ${activeTab === 'api' ? 'active' : ''}`}
+            aria-current={activeTab === 'api' ? 'page' : undefined}
             onClick={() => setActiveTab('api')}
           >
-            <Server size={16} /> API Health
+            <Server size={15} /> API status
           </button>
         </nav>
 
-        {/* Live Backend Indicator */}
-        <div className="header-status-box" onClick={checkHealth} style={{ cursor: 'pointer' }} title="Click to refresh status">
+        <button
+          type="button"
+          className="header-status-box"
+          onClick={checkHealth}
+          aria-label="Refresh backend connection status"
+          title="Refresh backend status"
+        >
           <span className={`pulse-dot ${backendStatus.online ? '' : 'offline'}`} />
           <span>
-            {backendStatus.online ? `FastAPI Online (${backendStatus.ping}ms)` : 'Backend Offline (Mock Mode)'}
+            {backendStatus.online ? `Service online · ${backendStatus.ping} ms` : 'Service offline'}
           </span>
-          <RefreshCw size={13} style={{ opacity: 0.7 }} />
-        </div>
+          <RefreshCw size={13} aria-hidden="true" />
+        </button>
       </header>
 
-      {/* Main Body Content */}
       <main className="main-content">
-        {/* Hero Banner */}
-        <section className="hero-banner">
-          <div className="hero-tag">
-            <Sparkles size={14} /> AI Produce Recognition
-          </div>
-          <h1 className="hero-headline">
-            Food Verse AI — <span className="highlight-gradient">Produce Intelligence</span>
-          </h1>
-          <p className="hero-description">
-            Upload any fresh produce photo to recognize supported fruits and vegetables, view real-time model confidence scores, audit nutritional profiles, and check freshness.
-          </p>
+        {activeTab === 'home' && (
+          <section className="home-page" aria-labelledby="home-heading">
+            <div className="home-hero">
+              <div className="home-hero-copy">
+                <span className="hero-tag"><Apple size={15} /> A little more insight at every meal</span>
+                <h1 className="hero-headline" id="home-heading">Know Your Produce.</h1>
+                <p className="hero-description">
+                  Identify vegetables, explore their nutritional value, check freshness, and discover new ways to cook.
+                </p>
+                <div className="hero-actions">
+                  <button type="button" className="btn-primary" onClick={() => setActiveTab('vision')}>
+                    <Camera size={17} /> Identify Produce
+                  </button>
+                  <button type="button" className="btn-secondary" onClick={() => setActiveTab('nutrition')}>
+                    Explore Nutrition
+                  </button>
+                </div>
+                <details className="supported-classes">
+                  <summary>See the 15 supported produce classes</summary>
+                  <div className="supported-scope-bar">
+                    {SUPPORTED_PRODUCE.map((produce) => (
+                      <span key={produce} className="supported-tag-pill">{produce}</span>
+                    ))}
+                  </div>
+                </details>
+              </div>
+              <img
+                className="home-hero-image"
+                src="/images/fresh_produce.jpg"
+                alt="Fresh tomatoes, broccoli, peppers, and herbs"
+                fetchPriority="high"
+              />
+            </div>
 
-          {/* Supported Produce Scope Pill Bar */}
-          <div className="supported-scope-bar">
-            <span className="supported-scope-label">15 Supported Produce Classes:</span>
-            {SUPPORTED_PRODUCE.map((cls) => (
-              <span key={cls} className="supported-tag-pill">{cls}</span>
-            ))}
-          </div>
-        </section>
+            <section className="home-tools" aria-labelledby="tools-heading">
+              <div className="section-heading">
+                <div>
+                  <h2 id="tools-heading">Explore Food Verse</h2>
+                  <p>Choose a tool to get started.</p>
+                </div>
+              </div>
+              <div className="home-tools-grid">
+                <button type="button" className="home-tool-card" onClick={() => setActiveTab('vision')}>
+                  <Camera size={19} /><span><strong>Recognize</strong><small>Identify produce from a photo</small></span>
+                </button>
+                <button type="button" className="home-tool-card" onClick={() => setActiveTab('nutrition')}>
+                  <Activity size={19} /><span><strong>Nutrition</strong><small>Explore a portion-based profile</small></span>
+                </button>
+                <button type="button" className="home-tool-card" onClick={() => setActiveTab('freshness')}>
+                  <Apple size={19} /><span><strong>Freshness</strong><small>View a produce assessment</small></span>
+                </button>
+                <button type="button" className="home-tool-card" onClick={() => setActiveTab('chef')}>
+                  <ChefHat size={19} /><span><strong>Recipes</strong><small>Find ideas from your ingredients</small></span>
+                </button>
+                <button type="button" className="home-tool-card" onClick={() => setActiveTab('hygiene')}>
+                  <ShieldCheck size={19} /><span><strong>Hygiene audit</strong><small>Review submitted kitchen scores</small></span>
+                </button>
+                <button type="button" className="home-tool-card" onClick={() => setActiveTab('api')}>
+                  <Server size={19} /><span><strong>API status</strong><small>Check service availability</small></span>
+                </button>
+              </div>
+            </section>
+          </section>
+        )}
 
-        {/* TAB 1: VISION & RECOGNITION */}
         {activeTab === 'vision' && (
           <section className="tab-panel-container">
             {/* Primary Produce Recognition Section */}
@@ -646,14 +656,20 @@ export default function App() {
                     </p>
                   </div>
                 </div>
-                <span className="badge badge-emerald">MobileNetV3 Active</span>
+                <span className={`badge ${backendStatus.info?.vision_model_status?.startsWith('loaded') ? 'badge-emerald' : 'badge-amber'}`}>
+                  {backendStatus.info?.vision_model_status?.startsWith('loaded')
+                    ? 'Vision model ready'
+                    : backendStatus.online
+                      ? 'Vision model unavailable'
+                      : 'Backend offline'}
+                </span>
               </div>
 
               {/* Real HTML file input with accept="image/*" */}
               <input
                 ref={fileInputRef}
                 type="file"
-                accept="image/*"
+                accept=".jpg,.jpeg,.png,.webp,.bmp,.jfif,image/jpeg,image/png,image/webp,image/bmp"
                 id="food-image-input"
                 style={{ display: 'none' }}
                 onChange={handleFileInputChange}
@@ -661,21 +677,14 @@ export default function App() {
 
               {/* STATE 1: No image selected */}
               {!previewUrl ? (
-                <div
+                <button
+                  type="button"
                   id="upload-dropzone"
                   className={`upload-dropzone ${isDragging ? 'dragging' : ''}`}
                   onDragOver={handleDragOver}
                   onDragLeave={handleDragLeave}
                   onDrop={handleDrop}
                   onClick={() => fileInputRef.current?.click()}
-                  role="button"
-                  tabIndex={0}
-                  onKeyDown={(e) => {
-                    if (e.key === 'Enter' || e.key === ' ') {
-                      e.preventDefault();
-                      fileInputRef.current?.click();
-                    }
-                  }}
                 >
                   <div className="upload-drop-icon">
                     <UploadCloud size={28} />
@@ -684,20 +693,10 @@ export default function App() {
                     Drag and drop your produce image here, or browse
                   </div>
                   <div className="upload-drop-subtext">
-                    Supports PNG, JPG, JPEG, WEBP • Maximum 10 MB
+                    JPG, PNG, WEBP, BMP, JFIF · Maximum 10 MB
                   </div>
-                  <button
-                    type="button"
-                    id="choose-image-btn"
-                    className="upload-choose-btn"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      fileInputRef.current?.click();
-                    }}
-                  >
-                    <Upload size={16} /> Upload Image
-                  </button>
-                </div>
+                  <span className="upload-choose-btn"><Upload size={16} /> Browse images</span>
+                </button>
               ) : !uploadPrediction ? (
                 /* STATE 2: Image selected & previewed (Before recognition) */
                 <div className="upload-preview-card" id="upload-preview-card">
@@ -768,15 +767,6 @@ export default function App() {
                       </button>
                     </div>
 
-                    {showPhase2Notice && (
-                      <div className="phase2-notice-banner animate-fade-in" id="phase2-notice-banner">
-                        <Info size={18} color="var(--accent-cyan)" style={{ flexShrink: 0, marginTop: '2px' }} />
-                        <div>
-                          <span className="phase2-badge">Vision Active</span>
-                          <strong>AI analysis active.</strong> Multimodal neural inference is powered by the verified 15-class MobileNetV3-Large vision model.
-                        </div>
-                      </div>
-                    )}
                   </div>
                 </div>
               ) : (
@@ -849,7 +839,7 @@ export default function App() {
                           {uploadPrediction.display_name}
                         </h3>
                         <span className="prediction-category-tag">
-                          {uploadPrediction.nutrition_profile?.category || 'Fresh Produce'} • {uploadPrediction.nutrition_profile?.cuisine || 'Raw Wholefood'}
+                          {[uploadPrediction.nutrition_profile?.category, uploadPrediction.nutrition_profile?.cuisine].filter(Boolean).join(' · ')}
                         </span>
                       </div>
 
@@ -859,12 +849,14 @@ export default function App() {
                             <Award size={14} /> {uploadPrediction.model_confidence_pct}% Confidence
                           </span>
                           <span className="confidence-note-disclaimer">
-                            *Model confidence score (evaluated on 3,000 held-out test images; not a guarantee of correctness).
+                            Model confidence is not a guarantee of correctness.
                           </span>
                         </div>
-                        <div className="latency-badge">
-                          <Zap size={13} /> {uploadPrediction.inference_latency_ms} ms CPU Latency
-                        </div>
+                        {uploadPrediction.inference_latency_ms != null && (
+                          <div className="latency-badge">
+                            <Zap size={13} /> {uploadPrediction.inference_latency_ms} ms CPU latency
+                          </div>
+                        )}
                       </div>
                     </div>
 
@@ -992,127 +984,38 @@ export default function App() {
 
             {/* Reference Samples & Demo Explorer (Preserved & Accessible, Non-competing) */}
             <section className="demo-section-wrapper" aria-label="Explore Reference Samples">
-              <div className="preset-title-label">
-                <Layers size={15} /> Reference Library & Demo Samples
+              <div className="section-heading">
+                <div>
+                  <h2>Reference images</h2>
+                  <p>These images are for browsing only; they are not analyzed or scored.</p>
+                </div>
+                <Layers size={19} aria-hidden="true" />
               </div>
-              <p style={{ fontSize: '0.84rem', color: 'var(--text-muted)', marginTop: '-0.25rem' }}>
-                Select a benchmark sample below to inspect multimodal intelligence in Freshness, Nutrition, and Chef AI.
-              </p>
 
-              {/* Sample Dish Picker */}
               <div className="sample-presets-container">
                 <div className="sample-grid">
                   {PRESET_DISHES.map((dish) => (
-                    <div
+                    <button
+                      type="button"
                       key={dish.id}
                       id={`preset-${dish.id}`}
                       className={`sample-card ${selectedDishId === dish.id ? 'active' : ''}`}
+                      aria-pressed={selectedDishId === dish.id}
                       onClick={() => handleSelectDish(dish.id)}
                     >
                       <img src={dish.image} alt={dish.name} className="sample-thumbnail" />
                       <div className="sample-card-info">
-                        <h4>{dish.name}</h4>
-                        <p>{dish.subtitle}</p>
+                        <strong>{dish.name}</strong>
+                        <small>{dish.subtitle}</small>
                       </div>
-                    </div>
+                    </button>
                   ))}
                 </div>
               </div>
 
-              <div className="dashboard-grid">
-                {/* Left Column: Image with AI Scanner Overlay */}
-                <div className="glass-card vision-showcase-box">
-                  <div className="image-preview-wrapper">
-                    <img src={currentDish.image} alt={currentDish.name} className="preview-image" />
-                    {isScanning && <div className="vision-scan-overlay" />}
-                    <div className="confidence-tag-overlay">
-                      <CheckCircle2 size={16} />
-                      <span>{currentDish.confidence}% Confidence</span>
-                    </div>
-                  </div>
-
-                  <div className="meta-pill-row">
-                    <span className="badge badge-emerald">Cuisine: {currentDish.cuisine}</span>
-                    <span className="badge badge-cyan">Freshness: {currentDish.freshnessScore}/100</span>
-                    <span className="badge badge-amber">{currentDish.calories} kcal / serving</span>
-                    <span className="badge badge-purple">Nutri-Grade: A</span>
-                  </div>
-                </div>
-
-                {/* Right Column: Identified Details */}
-                <div className="glass-card details-panel">
-                  <div className="panel-header">
-                    <div>
-                      <h2 className="panel-title">{currentDish.name}</h2>
-                      <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                        Multimodal Neural Recognition Engine
-                      </p>
-                    </div>
-                    <span className="badge badge-emerald">Verified</span>
-                  </div>
-
-                  {/* Macro summary */}
-                  <div>
-                    <div className="preset-title-label">Nutritional Snapshot</div>
-                    <div className="macro-grid">
-                      <div className="macro-box">
-                        <div className="macro-num">{currentDish.calories}</div>
-                        <div className="macro-label">Calories</div>
-                      </div>
-                      <div className="macro-box">
-                        <div className="macro-num">{currentDish.protein}g</div>
-                        <div className="macro-label">Protein</div>
-                      </div>
-                      <div className="macro-box">
-                        <div className="macro-num">{currentDish.carbs}g</div>
-                        <div className="macro-label">Carbs</div>
-                      </div>
-                      <div className="macro-box">
-                        <div className="macro-num">{currentDish.fat}g</div>
-                        <div className="macro-label">Fats</div>
-                      </div>
-                    </div>
-                  </div>
-
-                  {/* Identified Ingredients */}
-                  <div>
-                    <div className="preset-title-label">Identified Ingredients ({currentDish.ingredients.length})</div>
-                    <div className="ingredients-list">
-                      {currentDish.ingredients.map((ing, i) => (
-                        <span key={i} className="ingredient-chip">
-                          • {ing}
-                        </span>
-                      ))}
-                    </div>
-                  </div>
-
-                  {/* Chef's Insight */}
-                  <div className="chef-quote-card">
-                    "{currentDish.chefQuote}"
-                  </div>
-
-                  {/* Quick Action Navigation */}
-                  <div style={{ display: 'flex', gap: '10px', marginTop: '0.5rem' }}>
-                    <button
-                      className="btn-primary"
-                      onClick={() => setActiveTab('freshness')}
-                    >
-                      <Apple size={16} /> Audit Freshness
-                    </button>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => setActiveTab('nutrition')}
-                    >
-                      <Activity size={16} /> Detailed Nutrition
-                    </button>
-                    <button
-                      className="btn-secondary"
-                      onClick={() => setActiveTab('chef')}
-                    >
-                      <ChefHat size={16} /> Chef Assistant
-                    </button>
-                  </div>
-                </div>
+              <div className="reference-image-card">
+                <img src={currentDish.image} alt={currentDish.name} className="preview-image" />
+                <p><strong>{currentDish.name}</strong> <span>Reference image</span></p>
               </div>
             </section>
           </section>
@@ -1122,56 +1025,44 @@ export default function App() {
         {activeTab === 'freshness' && (
           <section className="tab-panel-container">
             <div className="dashboard-grid">
-              {/* Left Column: Circular Freshness Index */}
-              <div className="glass-card vision-showcase-box">
-                <div className="gauge-wrapper">
-                  <div className="gauge-circle">
-                    <div className="gauge-val">{currentDish.freshnessScore}</div>
-                    <div className="gauge-sub">Quality Index</div>
-                  </div>
-                  <h3 style={{ fontSize: '1.2rem', marginBottom: '4px' }}>Optimal Freshness Grade A</h3>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem', textAlign: 'center' }}>
-                    Visual pigment density and structural cellular integrity indicate peak biological nutrition.
-                  </p>
-                </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div className="step-card">
-                    <Clock size={20} color="var(--accent-amber)" />
-                    <div>
-                      <strong style={{ fontSize: '0.9rem', color: '#fff' }}>Estimated Shelf Life</strong>
-                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                        Consume within 2-3 days for maximum enzymatic and antioxidant retention.
-                      </p>
-                    </div>
-                  </div>
-                  <div className="step-card">
-                    <ShieldCheck size={20} color="var(--accent-emerald)" />
-                    <div>
-                      <strong style={{ fontSize: '0.9rem', color: '#fff' }}>Recommended Storage Protocol</strong>
-                      <p style={{ fontSize: '0.82rem', color: 'var(--text-muted)' }}>
-                        Seal in airtight glass container at 2°C – 4°C with controlled relative humidity (85%).
-                      </p>
-                    </div>
-                  </div>
-                </div>
-              </div>
-
-              {/* Right Column: Custom Food Freshness Scanner */}
               <div className="glass-card details-panel">
                 <div className="panel-header">
                   <div>
-                    <h2 className="panel-title">Biomarker Freshness Analyzer</h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      Test freshness parameters for any food item
-                    </p>
+                    <h2 className="panel-title">About freshness estimates</h2>
+                    <p className="panel-description">Use the result as general guidance, not a safety guarantee.</p>
                   </div>
-                  <span className="badge badge-cyan">AI Sensory Model</span>
+                  <Info size={20} aria-hidden="true" />
+                </div>
+                <p className="assessment-note">
+                  This assessment uses a name and a selected storage type. It does not inspect a photo, measure
+                  the food, or detect spoilage. Check the food directly and follow local food-safety guidance.
+                </p>
+                {freshnessResult?.storage_protocol && (
+                  <div className="chef-quote-card">
+                    <strong>Storage recommendation</strong>
+                    <p>{freshnessResult.storage_protocol}</p>
+                  </div>
+                )}
+              </div>
+
+              <div className="glass-card details-panel">
+                <div className="panel-header">
+                  <div>
+                    <h2 className="panel-title">Freshness assessment</h2>
+                    <p className="panel-description">Enter a food or produce name for an estimate.</p>
+                  </div>
+                  <span className="badge badge-emerald">Service estimate</span>
                 </div>
 
-                <div className="interactive-form">
+                <form
+                  className="interactive-form"
+                  onSubmit={(event) => {
+                    event.preventDefault();
+                    handleAnalyzeFreshness();
+                  }}
+                >
                   <div className="form-group">
-                    <label className="form-label">Food Item or Produce Name</label>
+                    <label className="form-label" htmlFor="freshness-item-input">Food or produce</label>
                     <input
                       id="freshness-item-input"
                       type="text"
@@ -1183,44 +1074,44 @@ export default function App() {
                   </div>
 
                   <button
+                    type="submit"
                     id="analyze-freshness-btn"
                     className="btn-primary"
-                    onClick={handleAnalyzeFreshness}
-                    disabled={loadingFreshness}
+                    disabled={loadingFreshness || !freshnessItem.trim()}
                   >
-                    {loadingFreshness ? <RefreshCw size={16} className="spin" /> : <Apple size={16} />}
-                    {loadingFreshness ? 'Analyzing Biomarkers...' : 'Run Freshness Audit'}
+                    {loadingFreshness ? <RefreshCw size={16} className="spin-animation" /> : <Apple size={16} />}
+                    {loadingFreshness ? 'Checking estimate…' : 'Check freshness'}
                   </button>
-                </div>
+                </form>
 
+                {freshnessError && (
+                  <div className="upload-error-banner" role="alert">
+                    <AlertCircle size={17} aria-hidden="true" /> {freshnessError}
+                  </div>
+                )}
+                {loadingFreshness && <p className="empty-state" aria-live="polite">Loading freshness estimate…</p>}
                 {freshnessResult && (
-                  <div className="animate-fade-in" style={{ marginTop: '1rem' }}>
-                    <div className="panel-header" style={{ marginBottom: '1rem' }}>
-                      <h3 style={{ fontSize: '1.05rem' }}>Results for {freshnessResult.item_name}</h3>
+                  <div className="feature-results">
+                    <div className="panel-header">
+                      <h3 className="panel-title">Estimate for {freshnessResult.item_name}</h3>
                       <span className="badge badge-emerald">{freshnessResult.grade}</span>
                     </div>
-
-                    <div className="macro-grid" style={{ marginBottom: '1rem' }}>
+                    <div className="macro-grid">
                       <div className="macro-box">
                         <div className="macro-num">{freshnessResult.freshness_index}/100</div>
-                        <div className="macro-label">Score</div>
+                        <div className="macro-label">Estimated freshness score</div>
                       </div>
                       <div className="macro-box">
                         <div className="macro-num">{freshnessResult.estimated_shelf_life_days} Days</div>
-                        <div className="macro-label">Shelf Life</div>
+                        <div className="macro-label">Estimated shelf life</div>
                       </div>
                     </div>
-
-                    <div className="preset-title-label">Observed Indicators</div>
-                    <ul style={{ paddingLeft: '1.2rem', color: 'var(--text-muted)', fontSize: '0.86rem', marginBottom: '1rem' }}>
-                      {freshnessResult.visual_indicators.map((ind, i) => (
-                        <li key={i}>{ind}</li>
+                    <h3 className="preset-title-label">Indicators returned by the service</h3>
+                    <ul className="result-list">
+                      {(freshnessResult.visual_indicators || []).map((ind) => (
+                        <li key={ind}>{ind}</li>
                       ))}
                     </ul>
-
-                    <div className="chef-quote-card">
-                      <strong>Storage Note:</strong> {freshnessResult.storage_protocol}
-                    </div>
                   </div>
                 )}
               </div>
@@ -1228,25 +1119,38 @@ export default function App() {
           </section>
         )}
 
-        {/* TAB 3: NUTRITION PROFILER */}
         {activeTab === 'nutrition' && (
           <section className="tab-panel-container">
             <div className="dashboard-grid">
-              {/* Left Column: Portion Slider & Macros */}
               <div className="glass-card vision-showcase-box">
                 <div className="panel-header">
                   <div>
-                    <h2 className="panel-title">{currentDish.name}</h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Interactive Serving Profiler</p>
+                    <h2 className="panel-title">Nutrition profile</h2>
+                    <p className="panel-description">Choose a reference item and serving size.</p>
                   </div>
-                  <span className="badge badge-emerald">Nutri-Score A+</span>
+                  <span className="badge badge-emerald">Service estimates</span>
                 </div>
-
-                {/* Portion Size Slider */}
-                <div style={{ background: 'rgba(255,255,255,0.03)', padding: '1.2rem', borderRadius: 'var(--radius-md)', border: '1px solid var(--border-subtle)' }}>
-                  <div style={{ display: 'flex', justifyContent: 'space-between', marginBottom: '8px' }}>
-                    <span className="form-label">Adjust Serving Portion Size:</span>
-                    <strong style={{ color: 'var(--accent-emerald)', fontSize: '1.05rem' }}>{portionGrams} grams</strong>
+                <div className="form-group">
+                  <label className="form-label" htmlFor="nutrition-food-name">Reference food</label>
+                  <select
+                    id="nutrition-food-name"
+                    className="form-input"
+                    value={selectedDishId}
+                    onChange={(event) => {
+                      setSelectedDishId(event.target.value);
+                      setNutritionResult(null);
+                      setNutritionError('');
+                    }}
+                  >
+                    {PRESET_DISHES.map((dish) => (
+                      <option key={dish.id} value={dish.id}>{dish.name}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="form-group">
+                  <div className="range-label-row">
+                    <label className="form-label" htmlFor="portion-slider">Serving size</label>
+                    <strong>{portionGrams} g</strong>
                   </div>
                   <input
                     id="portion-slider"
@@ -1255,100 +1159,73 @@ export default function App() {
                     max="500"
                     step="25"
                     value={portionGrams}
-                    onChange={(e) => setPortionGrams(Number(e.target.value))}
-                    style={{ width: '100%', accentColor: 'var(--accent-emerald)', cursor: 'pointer' }}
+                    onChange={(event) => {
+                      setPortionGrams(Number(event.target.value));
+                      setNutritionResult(null);
+                      setNutritionError('');
+                    }}
                   />
-                  <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.74rem', color: 'var(--text-faint)', marginTop: '4px' }}>
-                    <span>50g (Tasting)</span>
-                    <span>250g (Standard)</span>
-                    <span>500g (Family)</span>
-                  </div>
+                  <div className="range-label-row"><span>50 g</span><span>500 g</span></div>
                 </div>
-
-                {/* Dynamic Calculated Macros */}
-                <div className="macro-grid">
-                  <div className="macro-box">
-                    <div className="macro-num">{Math.round(currentDish.calories * portionRatio)}</div>
-                    <div className="macro-label">Total Calories (kcal)</div>
-                  </div>
-                  <div className="macro-box">
-                    <div className="macro-num">{(currentDish.protein * portionRatio).toFixed(1)}g</div>
-                    <div className="macro-label">Protein</div>
-                  </div>
-                  <div className="macro-box">
-                    <div className="macro-num">{(currentDish.carbs * portionRatio).toFixed(1)}g</div>
-                    <div className="macro-label">Carbs</div>
-                  </div>
-                  <div className="macro-box">
-                    <div className="macro-num">{(currentDish.fat * portionRatio).toFixed(1)}g</div>
-                    <div className="macro-label">Healthy Fats</div>
-                  </div>
-                </div>
-
-                <div className="meta-pill-row">
-                  <span className="badge badge-amber">Dietary Fiber: {(currentDish.fiber * portionRatio).toFixed(1)}g</span>
-                  <span className="badge badge-cyan">Glycemic Index: Low</span>
-                  <span className="badge badge-purple">Sodium: {Math.round(380 * portionRatio)}mg</span>
-                </div>
+                <p className="assessment-note">
+                  Nutrition values are estimates returned by the existing service, not laboratory measurements.
+                </p>
+                <button
+                  type="button"
+                  className="btn-primary"
+                  onClick={handleAnalyzeNutrition}
+                  disabled={loadingNutrition}
+                >
+                  {loadingNutrition && <RefreshCw size={16} className="spin-animation" />}
+                  {loadingNutrition ? 'Loading profile…' : 'Load nutrition profile'}
+                </button>
               </div>
 
-              {/* Right Column: Micronutrients & Dietary Flags */}
               <div className="glass-card details-panel">
                 <div className="panel-header">
                   <div>
-                    <h2 className="panel-title">Micronutrient Breakdown</h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Essential Vitamins & Bioactive Trace Minerals</p>
+                    <h2 className="panel-title">{nutritionResult?.food_name || 'Nutrition details'}</h2>
+                    <p className="panel-description">
+                      {nutritionResult ? `Per ${nutritionResult.portion_grams} g serving` : 'Load a profile to see the service response.'}
+                    </p>
                   </div>
-                  <Award size={22} color="var(--accent-amber)" />
+                  <Activity size={20} aria-hidden="true" />
                 </div>
-
-                <div style={{ display: 'flex', flexDirection: 'column', gap: '10px' }}>
-                  <div className="step-card">
-                    <TrendingUp size={20} color="var(--accent-emerald)" />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span>Vitamin C (Antioxidant)</span>
-                        <strong style={{ color: 'var(--accent-emerald)' }}>180% Daily Value</strong>
-                      </div>
-                      <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', marginTop: '6px' }}>
-                        <div style={{ width: '90%', height: '100%', background: 'var(--accent-emerald)', borderRadius: '3px' }} />
-                      </div>
-                    </div>
+                {nutritionError && (
+                  <div className="upload-error-banner" role="alert">
+                    <AlertCircle size={17} aria-hidden="true" /> {nutritionError}
                   </div>
-
-                  <div className="step-card">
-                    <TrendingUp size={20} color="var(--accent-cyan)" />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span>Potassium & Electrolytes</span>
-                        <strong style={{ color: 'var(--accent-cyan)' }}>640 mg</strong>
-                      </div>
-                      <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', marginTop: '6px' }}>
-                        <div style={{ width: '75%', height: '100%', background: 'var(--accent-cyan)', borderRadius: '3px' }} />
-                      </div>
+                )}
+                {nutritionResult?.nutrition ? (
+                  <div className="feature-results">
+                    <div className="nutrition-results-grid">
+                      <div className="macro-box"><div className="macro-num">{nutritionResult.nutrition.calories}</div><div className="macro-label">Calories (kcal)</div></div>
+                      <div className="macro-box"><div className="macro-num">{nutritionResult.nutrition.protein_g} g</div><div className="macro-label">Protein</div></div>
+                      <div className="macro-box"><div className="macro-num">{nutritionResult.nutrition.carbs_g} g</div><div className="macro-label">Carbohydrates</div></div>
+                      <div className="macro-box"><div className="macro-num">{nutritionResult.nutrition.fat_g} g</div><div className="macro-label">Fat</div></div>
+                      <div className="macro-box"><div className="macro-num">{nutritionResult.nutrition.fiber_g} g</div><div className="macro-label">Fiber</div></div>
+                      <div className="macro-box"><div className="macro-num">{nutritionResult.nutrition.sugar_g} g</div><div className="macro-label">Sugar</div></div>
+                      <div className="macro-box"><div className="macro-num">{nutritionResult.nutrition.sodium_mg} mg</div><div className="macro-label">Sodium</div></div>
+                      <div className="macro-box"><div className="macro-num">{nutritionResult.nutrition.potassium_mg} mg</div><div className="macro-label">Potassium</div></div>
                     </div>
+                    {nutritionResult.nutrition.glycemic_index && (
+                      <p className="result-detail">
+                        <strong>Glycemic index:</strong> {nutritionResult.nutrition.glycemic_index}
+                      </p>
+                    )}
+                    {nutritionResult.nutrition.allergens?.length > 0 && (
+                      <p className="result-detail">
+                        <strong>Allergens returned by the service:</strong> {nutritionResult.nutrition.allergens.join(', ')}
+                      </p>
+                    )}
                   </div>
-
-                  <div className="step-card">
-                    <TrendingUp size={20} color="var(--accent-amber)" />
-                    <div style={{ flex: 1 }}>
-                      <div style={{ display: 'flex', justifyContent: 'space-between', fontSize: '0.86rem' }}>
-                        <span>Omega-3 / Monounsaturated Lipids</span>
-                        <strong style={{ color: 'var(--accent-amber)' }}>14.2 g</strong>
-                      </div>
-                      <div style={{ width: '100%', height: '6px', background: 'rgba(255,255,255,0.08)', borderRadius: '3px', marginTop: '6px' }}>
-                        <div style={{ width: '82%', height: '100%', background: 'var(--accent-amber)', borderRadius: '3px' }} />
-                      </div>
-                    </div>
-                  </div>
-                </div>
-
-                <div className="preset-title-label" style={{ marginTop: '0.8rem' }}>Allergen & Sensitivity Guard</div>
-                <div className="meta-pill-row">
-                  <span className="badge badge-emerald">✓ Gluten-Free Adaptable</span>
-                  <span className="badge badge-cyan">✓ No Added Sugars</span>
-                  <span className="badge badge-purple">✓ Non-GMO Wholefood</span>
-                </div>
+                ) : (
+                  !nutritionError && (
+                    <p className="empty-state" aria-live="polite">
+                      {loadingNutrition ? 'Loading nutrition profile…' : 'Your requested nutrition profile will appear here.'}
+                    </p>
+                  )
+                )}
               </div>
             </div>
           </section>
@@ -1362,23 +1239,20 @@ export default function App() {
               <div className="glass-card vision-showcase-box">
                 <div className="panel-header">
                   <div>
-                    <h2 className="panel-title">Chef AI Recipe Studio</h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      Tell Chef AI what ingredients you have
-                    </p>
+                    <h2 className="panel-title">Recipe assistant</h2>
+                    <p className="panel-description">Add ingredients and choose a dietary preference.</p>
                   </div>
-                  <ChefHat size={22} color="var(--accent-amber)" />
+                  <ChefHat size={21} aria-hidden="true" />
                 </div>
 
-                {/* Add ingredient form */}
-                <form onSubmit={handleAddIngredient} style={{ display: 'flex', gap: '8px' }}>
+                <form onSubmit={handleAddIngredient} className="ingredient-form">
                   <input
                     id="ingredient-input"
                     type="text"
                     className="form-input"
-                    style={{ flex: 1 }}
                     value={ingredientInput}
                     onChange={(e) => setIngredientInput(e.target.value)}
+                    aria-label="Add an ingredient"
                     placeholder="Add ingredient (e.g. Avocado, Quinoa, Salmon)..."
                   />
                   <button type="submit" className="btn-secondary">
@@ -1388,25 +1262,29 @@ export default function App() {
 
                 {/* Ingredients Pill Cloud */}
                 <div>
-                  <div className="preset-title-label">Available In Your Pantry ({pantryIngredients.length})</div>
-                  <div className="ingredients-list">
-                    {pantryIngredients.map((ing) => (
-                      <span
-                        key={ing}
-                        className="ingredient-chip"
-                        style={{ cursor: 'pointer', display: 'inline-flex', alignItems: 'center', gap: '6px' }}
-                        onClick={() => handleRemoveIngredient(ing)}
-                        title="Click to remove"
-                      >
-                        {ing} <span style={{ opacity: 0.6, fontSize: '0.75rem' }}>✕</span>
-                      </span>
-                    ))}
-                  </div>
+                  <div className="preset-title-label">Ingredients ({pantryIngredients.length})</div>
+                  {pantryIngredients.length > 0 ? (
+                    <div className="ingredients-list">
+                      {pantryIngredients.map((ing) => (
+                        <button
+                          key={ing}
+                          type="button"
+                          className="ingredient-chip"
+                          onClick={() => handleRemoveIngredient(ing)}
+                          aria-label={`Remove ${ing}`}
+                          title={`Remove ${ing}`}
+                        >
+                          {ing} <span aria-hidden="true">×</span>
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="empty-state">Add the ingredients you have on hand.</p>
+                  )}
                 </div>
 
-                {/* Dietary Preference */}
                 <div className="form-group">
-                  <label className="form-label">Dietary Preference</label>
+                  <label className="form-label" htmlFor="dietary-select">Dietary preference</label>
                   <select
                     id="dietary-select"
                     className="form-input"
@@ -1423,12 +1301,13 @@ export default function App() {
 
                 <button
                   id="generate-recipe-btn"
+                  type="button"
                   className="btn-primary"
                   onClick={handleGenerateRecipe}
-                  disabled={generatingRecipe}
+                  disabled={generatingRecipe || pantryIngredients.length === 0}
                 >
-                  {generatingRecipe ? <RefreshCw size={16} className="spin" /> : <Sparkles size={16} />}
-                  {generatingRecipe ? 'Chef AI is Crafting Recipe...' : 'Generate Gourmet Recipe'}
+                  {generatingRecipe ? <RefreshCw size={16} className="spin-animation" /> : <Sparkles size={16} />}
+                  {generatingRecipe ? 'Getting recipe…' : 'Find a recipe'}
                 </button>
               </div>
 
@@ -1436,18 +1315,17 @@ export default function App() {
               <div className="glass-card details-panel">
                 <div className="panel-header">
                   <div>
-                    <h2 className="panel-title">
-                      {generatedRecipe ? generatedRecipe.recipe_title : 'Featured Chef Creation'}
-                    </h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      Personalized AI Culinary Formula
-                    </p>
+                    <h2 className="panel-title">{generatedRecipe?.recipe_title || 'Recipe'}</h2>
+                    <p className="panel-description">Recipes returned by the existing service.</p>
                   </div>
-                  <span className="badge badge-amber">
-                    {generatedRecipe ? generatedRecipe.difficulty : 'Easy'}
-                  </span>
+                  {generatedRecipe?.difficulty && <span className="badge badge-emerald">{generatedRecipe.difficulty}</span>}
                 </div>
 
+                {recipeError && (
+                  <div className="upload-error-banner" role="alert">
+                    <AlertCircle size={17} aria-hidden="true" /> {recipeError}
+                  </div>
+                )}
                 {generatedRecipe ? (
                   <div className="animate-fade-in" style={{ display: 'flex', flexDirection: 'column', gap: '1rem' }}>
                     <div className="meta-pill-row">
@@ -1471,10 +1349,11 @@ export default function App() {
                     </div>
                   </div>
                 ) : (
-                  <div style={{ textAlign: 'center', padding: '3rem 1rem', color: 'var(--text-muted)' }}>
-                    <ChefHat size={48} style={{ opacity: 0.3, margin: '0 auto 1rem auto' }} />
-                    <p>Select your pantry ingredients and click "Generate Gourmet Recipe" to craft a custom dish!</p>
-                  </div>
+                  !recipeError && (
+                    <p className="empty-state" aria-live="polite">
+                      {generatingRecipe ? 'Looking for a recipe…' : 'Add ingredients and request a recipe to see the service response here.'}
+                    </p>
+                  )
                 )}
               </div>
             </div>
@@ -1485,66 +1364,132 @@ export default function App() {
         {activeTab === 'hygiene' && (
           <section className="tab-panel-container">
             <div className="dashboard-grid">
-              {/* Left Column: Sliders for Inspection */}
               <div className="glass-card vision-showcase-box">
                 <div className="panel-header">
                   <div>
-                    <h2 className="panel-title">Kitchen Hygiene & HACCP Auditor</h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                      Automated Food Safety & Cleanliness Scoring
-                    </p>
+                    <h2 className="panel-title">Kitchen self-assessment</h2>
+                    <p className="panel-description">Enter your own scores for a service assessment.</p>
                   </div>
                   <ShieldCheck size={22} color="var(--accent-emerald)" />
                 </div>
 
                 <div className="interactive-form">
                   <div className="form-group">
+                    <label className="form-label" htmlFor="facility-name">Kitchen or facility name (optional)</label>
+                    <input
+                      id="facility-name"
+                      type="text"
+                      className="form-input"
+                      value={facilityName}
+                      onChange={(event) => {
+                        setFacilityName(event.target.value);
+                        setAuditResult(null);
+                        setAuditError('');
+                      }}
+                      placeholder="Enter a facility name"
+                    />
+                  </div>
+                  <div className="form-group">
+                    <label className="form-label" htmlFor="inspection-zone">Inspection zone (optional)</label>
+                    <input
+                      id="inspection-zone"
+                      type="text"
+                      className="form-input"
+                      value={inspectionZone}
+                      onChange={(event) => {
+                        setInspectionZone(event.target.value);
+                        setAuditResult(null);
+                        setAuditError('');
+                      }}
+                      placeholder="Enter a kitchen area"
+                    />
+                  </div>
+                  <div className="form-group">
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <label className="form-label">Surface Cleanliness & Sanitization:</label>
-                      <strong style={{ color: 'var(--accent-emerald)' }}>{surfaceScore}%</strong>
+                      <label className="form-label" htmlFor="surface-score">Surface cleanliness score</label>
+                      <strong style={{ color: 'var(--accent-emerald)' }}>{surfaceScore == null ? '—' : `${surfaceScore}%`}</strong>
                     </div>
                     <input
-                      type="range"
-                      min="60"
+                      id="surface-score"
+                      className="form-input"
+                      type="number"
+                      min="0"
                       max="100"
-                      value={surfaceScore}
-                      onChange={(e) => setSurfaceScore(Number(e.target.value))}
-                      style={{ width: '100%', accentColor: 'var(--accent-emerald)' }}
+                      step="1"
+                      value={surfaceScore ?? ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setSurfaceScore(value === '' ? null : Number(value));
+                        setAuditResult(null);
+                        setAuditError('');
+                      }}
+                      placeholder="Enter a score (0–100)"
                     />
                   </div>
 
                   <div className="form-group">
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <label className="form-label">Cold-Chain Temperature Control (≤ 4°C):</label>
-                      <strong style={{ color: 'var(--accent-cyan)' }}>{tempScore}%</strong>
+                      <label className="form-label" htmlFor="temperature-score">Temperature control score</label>
+                      <strong style={{ color: 'var(--accent-cyan)' }}>{tempScore == null ? '—' : `${tempScore}%`}</strong>
                     </div>
                     <input
-                      type="range"
-                      min="60"
+                      id="temperature-score"
+                      className="form-input"
+                      type="number"
+                      min="0"
                       max="100"
-                      value={tempScore}
-                      onChange={(e) => setTempScore(Number(e.target.value))}
-                      style={{ width: '100%', accentColor: 'var(--accent-cyan)' }}
+                      step="1"
+                      value={tempScore ?? ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setTempScore(value === '' ? null : Number(value));
+                        setAuditResult(null);
+                        setAuditError('');
+                      }}
+                      placeholder="Enter a score (0–100)"
                     />
                   </div>
 
                   <div className="form-group">
                     <div style={{ display: 'flex', justifyContent: 'space-between' }}>
-                      <label className="form-label">Cross-Contamination Safeguards:</label>
-                      <strong style={{ color: 'var(--accent-purple)' }}>{contaminationScore}%</strong>
+                      <label className="form-label" htmlFor="contamination-score">Cross-contamination prevention score</label>
+                      <strong style={{ color: 'var(--accent-purple)' }}>{contaminationScore == null ? '—' : `${contaminationScore}%`}</strong>
                     </div>
                     <input
-                      type="range"
-                      min="60"
+                      id="contamination-score"
+                      className="form-input"
+                      type="number"
+                      min="0"
                       max="100"
-                      value={contaminationScore}
-                      onChange={(e) => setContaminationScore(Number(e.target.value))}
-                      style={{ width: '100%', accentColor: 'var(--accent-purple)' }}
+                      step="1"
+                      value={contaminationScore ?? ''}
+                      onChange={(event) => {
+                        const value = event.target.value;
+                        setContaminationScore(value === '' ? null : Number(value));
+                        setAuditResult(null);
+                        setAuditError('');
+                      }}
+                      placeholder="Enter a score (0–100)"
                     />
                   </div>
 
-                  <button id="run-audit-btn" className="btn-primary" onClick={handleRunAudit}>
-                    <ShieldCheck size={16} /> Run Regulatory Audit
+                  <p className="assessment-note">
+                    Enter self-assessed scores from 0–100. This tool cannot measure conditions or perform an official inspection.
+                  </p>
+                  {auditError && (
+                    <div className="upload-error-banner" role="alert">
+                      <AlertCircle size={17} aria-hidden="true" /> {auditError}
+                    </div>
+                  )}
+                  <button
+                    id="run-audit-btn"
+                    type="button"
+                    className="btn-primary"
+                    onClick={handleRunAudit}
+                    disabled={runningAudit}
+                  >
+                    {runningAudit && <RefreshCw size={16} className="spin-animation" />}
+                    {runningAudit ? 'Checking assessment…' : 'Run self-assessment'}
                   </button>
                 </div>
               </div>
@@ -1553,69 +1498,42 @@ export default function App() {
               <div className="glass-card details-panel">
                 <div className="panel-header">
                   <div>
-                    <h2 className="panel-title">Sanitation Compliance Audit</h2>
-                    <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>Inspection Zone: Cold Prep & Storage</p>
+                    <h2 className="panel-title">Assessment results</h2>
+                    <p className="panel-description">
+                      {auditResult?.facility ? `${auditResult.facility} · ${auditResult.zone}` : 'Results will appear after you submit your scores.'}
+                    </p>
                   </div>
-                  <span className="badge badge-emerald">
-                    Score: {auditResult ? auditResult.overall_hygiene_score : Math.round((surfaceScore + tempScore + contaminationScore) / 3)}/100
-                  </span>
+                  {auditResult && (
+                    <span className="badge badge-emerald">
+                      {auditResult.overall_hygiene_score}/100
+                    </span>
+                  )}
                 </div>
 
-                <div className="macro-grid">
-                  <div className="macro-box">
-                    <div className="macro-num">{Math.round((surfaceScore + tempScore + contaminationScore) / 3)}%</div>
-                    <div className="macro-label">Sanitation</div>
+                {auditResult ? (
+                  <div className="feature-results">
+                    {auditResult.certification_grade && <p className="result-detail"><strong>Service assessment:</strong> {auditResult.certification_grade}</p>}
+                    {Array.isArray(auditResult.inspection_checklist) && auditResult.inspection_checklist.length > 0 && (
+                      <ul className="result-list">
+                        {auditResult.inspection_checklist.map((item) => (
+                          <li key={item.item}>
+                            <strong>{item.item}</strong>{' '}
+                            {item.status && <span>· {item.status}</span>}
+                            {item.value && <span>· {item.value}</span>}
+                          </li>
+                        ))}
+                      </ul>
+                    )}
+                    {auditResult.ai_recommendation && (
+                      <p className="result-detail"><strong>Recommendation:</strong> {auditResult.ai_recommendation}</p>
+                    )}
+                    <p className="assessment-note">This is an automated estimate based on self-reported scores, not a regulatory inspection.</p>
                   </div>
-                  <div className="macro-box">
-                    <div className="macro-num">2.4°C</div>
-                    <div className="macro-label">Storage Temp</div>
-                  </div>
-                  <div className="macro-box">
-                    <div className="macro-num">0.02 ppm</div>
-                    <div className="macro-label">Residue</div>
-                  </div>
-                  <div className="macro-box">
-                    <div className="macro-num">Grade A</div>
-                    <div className="macro-label">Rating</div>
-                  </div>
-                </div>
-
-                <div className="preset-title-label">HACCP Inspection Checklist</div>
-                <table className="checklist-table">
-                  <thead>
-                    <tr>
-                      <th>Safety Parameter</th>
-                      <th>Status</th>
-                      <th>Observed Metric</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    <tr>
-                      <td>Cold Storage Refrigerator Temp</td>
-                      <td><span className="badge badge-emerald">Passed</span></td>
-                      <td>2.4°C (Safe limit &lt;4°C)</td>
-                    </tr>
-                    <tr>
-                      <td>Surface Sanitization Residue</td>
-                      <td><span className="badge badge-emerald">Passed</span></td>
-                      <td>0.02 ppm (Food Grade)</td>
-                    </tr>
-                    <tr>
-                      <td>Cutting Board Segregation</td>
-                      <td><span className="badge badge-cyan">Compliant</span></td>
-                      <td>Color-coded protocol</td>
-                    </tr>
-                    <tr>
-                      <td>Pathogen Contamination Guard</td>
-                      <td><span className="badge badge-emerald">Zero Trace</span></td>
-                      <td>UV Clean Verified</td>
-                    </tr>
-                  </tbody>
-                </table>
-
-                <div className="chef-quote-card">
-                  <strong>Auditor Note:</strong> Kitchen hygiene is compliant with commercial health standards. Maintain twice-daily temperature logs.
-                </div>
+                ) : (
+                  !auditError && !runningAudit && (
+                    <p className="empty-state">Your submitted-score assessment will appear here.</p>
+                  )
+                )}
               </div>
             </div>
           </section>
@@ -1627,9 +1545,9 @@ export default function App() {
             <div className="glass-card vision-showcase-box" style={{ marginBottom: '2rem' }}>
               <div className="panel-header">
                 <div>
-                  <h2 className="panel-title">FastAPI Backend Diagnostics & Specs</h2>
-                  <p style={{ color: 'var(--text-muted)', fontSize: '0.85rem' }}>
-                    Multimodal agent server communication health
+                  <h2 className="panel-title">Backend health & endpoints</h2>
+                          <p className="panel-description">
+                            Check the FastAPI service and its available routes.
                   </p>
                 </div>
                 <button
@@ -1638,8 +1556,8 @@ export default function App() {
                   onClick={handleRunDiagnostics}
                   disabled={runningDiag}
                 >
-                  {runningDiag ? <RefreshCw size={16} className="spin" /> : <Zap size={16} />}
-                  {runningDiag ? 'Testing Endpoints...' : 'Run Endpoint Diagnostics'}
+                  {runningDiag ? <RefreshCw size={16} className="spin-animation" /> : <Zap size={16} />}
+                  {runningDiag ? 'Testing endpoints…' : 'Test endpoints'}
                 </button>
               </div>
 
@@ -1651,16 +1569,16 @@ export default function App() {
                   <div className="macro-label">FastAPI Status</div>
                 </div>
                 <div className="macro-box">
-                  <div className="macro-num">{backendStatus.ping ? `${backendStatus.ping} ms` : '12 ms (Est)'}</div>
+                  <div className="macro-num">{backendStatus.ping != null ? `${backendStatus.ping} ms` : '—'}</div>
                   <div className="macro-label">Response Latency</div>
                 </div>
                 <div className="macro-box">
-                  <div className="macro-num">1.2.0</div>
-                  <div className="macro-label">API Version</div>
+                  <div className="macro-num">{backendStatus.info?.vision_model_status?.startsWith('loaded') ? 'Ready' : '—'}</div>
+                  <div className="macro-label">Vision model</div>
                 </div>
                 <div className="macro-box">
-                  <div className="macro-num">6</div>
-                  <div className="macro-label">Active Services</div>
+                  <div className="macro-num">{backendStatus.info?.uptime || '—'}</div>
+                  <div className="macro-label">Service uptime</div>
                 </div>
               </div>
 
@@ -1688,7 +1606,7 @@ export default function App() {
                   <span className="method-badge method-post">POST</span>
                   <span className="endpoint-path">/api/recognize</span>
                 </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Multimodal vision dish recognition</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Preset dish response</span>
               </div>
 
               <div className="api-spec-row">
@@ -1696,7 +1614,7 @@ export default function App() {
                   <span className="method-badge method-post">POST</span>
                   <span className="endpoint-path">/api/freshness</span>
                 </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Freshness & shelf-life audit</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Name-based freshness and storage estimate</span>
               </div>
 
               <div className="api-spec-row">
@@ -1704,7 +1622,7 @@ export default function App() {
                   <span className="method-badge method-post">POST</span>
                   <span className="endpoint-path">/api/nutrition</span>
                 </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Portion-scaled macronutrient engine</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Portion-based nutrition estimate</span>
               </div>
 
               <div className="api-spec-row">
@@ -1712,7 +1630,7 @@ export default function App() {
                   <span className="method-badge method-post">POST</span>
                   <span className="endpoint-path">/api/cooking-assistant</span>
                 </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Chef AI personalized recipe generator</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Recipe assistant</span>
               </div>
 
               <div className="api-spec-row">
@@ -1720,20 +1638,20 @@ export default function App() {
                   <span className="method-badge method-post">POST</span>
                   <span className="endpoint-path">/api/hygiene-audit</span>
                 </div>
-                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Commercial HACCP safety inspection</span>
+                <span style={{ fontSize: '0.8rem', color: 'var(--text-muted)' }}>Score-based hygiene assessment</span>
               </div>
 
               {/* Diagnostics Output */}
               {diagnosticsLog.length > 0 && (
-                <div className="animate-fade-in" style={{ marginTop: '1.5rem' }}>
+                <div className="diagnostics-section">
                   <div className="preset-title-label">Live Test Execution Logs</div>
-                  <div style={{ background: '#020408', padding: '1rem', borderRadius: 'var(--radius-sm)', border: '1px solid var(--border-subtle)', maxHeight: '280px', overflowY: 'auto' }}>
-                    {diagnosticsLog.map((log, idx) => (
-                      <div key={idx} style={{ display: 'flex', justifyContent: 'space-between', padding: '6px 0', borderBottom: '1px solid rgba(255,255,255,0.05)', fontSize: '0.82rem' }}>
+                  <div className="diagnostics-output" aria-live="polite">
+                    {diagnosticsLog.map((log) => (
+                      <div key={`${log.method}-${log.path}`} className="diagnostic-entry">
                         <span>
-                          <strong style={{ color: log.success ? '#34d399' : '#f43f5e' }}>[{log.status}]</strong> {log.name} ({log.method} {log.path})
+                          <strong className={log.success ? 'diagnostic-success' : 'diagnostic-failure'}>[{log.status}]</strong> {log.name} ({log.method} {log.path})
                         </span>
-                        <span style={{ color: 'var(--text-muted)' }}>{log.latency} ms</span>
+                        <span>{log.latency} ms</span>
                       </div>
                     ))}
                   </div>
@@ -1747,12 +1665,12 @@ export default function App() {
       {/* Footer */}
       <footer className="footer">
         <div>
-          <strong>FoodVerse AI</strong> — Multimodal Food Intelligence Agent Platform
+          <strong>Food Verse AI</strong> — Produce and nutrition tools
         </div>
-        <div style={{ display: 'flex', gap: '1.5rem' }}>
-          <span>FastAPI + Vite React 19</span>
-          <span>OpenAPI /docs</span>
-          <span>HACCP Compliant</span>
+        <div className="footer-tech">
+          <span>FastAPI</span>
+          <span>React</span>
+          <span>Vite</span>
         </div>
       </footer>
     </div>
